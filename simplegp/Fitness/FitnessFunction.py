@@ -3,38 +3,32 @@ from copy import deepcopy
 
 class SymbolicRegressionFitness:
 
-	def __init__( self, X_train, y_train, use_linear_scaling=True ):
+	def __init__( self, X_train, y_train, use_weights=False, weights: np.array = np.empty(0)):
 		self.X_train = X_train
 		self.y_train = y_train
-		self.use_linear_scaling = use_linear_scaling
-		self.elite = None
-		self.elite_scaling_a = 0.0
-		self.elite_scaling_b = 1.0
 		self.evaluations = 0
+		# and deleted some redundant class fields
 
-	def Evaluate( self, individual ):
+		self.use_weights = use_weights  # addition for ITGP
+		self.weights = weights
+
+	def Evaluate( self, individual):
 
 		self.evaluations = self.evaluations + 1
 
-		output = individual.GetOutput( self.X_train )
+		output = individual.GetOutput(self.X_train)
 
-		a = 0.0
-		b = 1.0
+		if self.use_weights:  # addition for ITGP
+			fit_error = self.weights @ np.square(self.y_train - output)  # wmse case, error in each dim
+		else:
+			fit_error = np.mean(np.square( self.y_train - output ))  # mse case, one-dim error
 
-		if self.use_linear_scaling:
-			b = np.cov(self.y_train, output)[0,1] / (np.var(output) + 1e-10)
-			a = np.mean(self.y_train) - b*np.mean(output)
+		if np.any(np.isnan(fit_error)):
+			if np.isscalar(fit_error):
+				fit_error = np.inf
+			else:
+				nan_indices = np.argwhere(np.isnan(fit_error))
+				for idx in nan_indices:
+					fit_error[idx] = np.inf
 
-		scaled_output = a + b*output
-
-		fit_error = np.mean( np.square( self.y_train - scaled_output ) )
-		if np.isnan(fit_error):
-			fit_error = np.inf
-
-		individual.fitness = fit_error
-
-		if not self.elite or individual.fitness < self.elite.fitness:
-			del self.elite
-			self.elite = deepcopy(individual)
-			self.elite_scaling_a = a 
-			self.elite_scaling_b = b
+		individual.fitness = fit_error  # can be one value or array of values
